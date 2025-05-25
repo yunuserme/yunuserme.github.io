@@ -1,4 +1,4 @@
-# AI.md - Yapay Zekadan Aldığım Yardımlar
+# Yapay Zekadan Aldığım Yardımlar
 
 https://chatgpt.com/share/68333f8d-bcd4-8001-bfcb-3b9304ce2d4f
 https://chatgpt.com/share/68333fe1-0a10-8001-8a85-d35b8856958c
