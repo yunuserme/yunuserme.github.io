@@ -25,6 +25,9 @@ Oyunda kullanılan temel mekanikler şunlardır:
 ![Oyun Görüntüsü 1](assets/image.png)
 ![Oyun Görüntüsü 2](assets/image2.png)
 ![Oyun Görüntüsü 3](assets/image3.png)
+
+- **OYUNUN VİDEOSU**:
+https://www.youtube.com/watch?v=yCzW4Y2ZGqs
 ## 💻 Kurulum ve Çalıştırma
 Oyunu çalıştırmak için aşağıdaki adımları izleyin:
 1. Depoyu klonlayın veya dosyaları indirin:
