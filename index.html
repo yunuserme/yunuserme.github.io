@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Koyun Kovboy Oyunu</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #000;
+            overflow: hidden;
+        }
+        canvas {
+            border: 2px solid white;
+            background-color: #000;
+            image-rendering: pixelated; /* pixel şeklinde görünsün diye */
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <!-- müzik burdan gelcek -->
+    <audio id="backgroundMusic" loop>
+        <!-- müziğin yerini buraya yazıyorum -->
+        <source src="musics/backround.mp3" type="audio/mp3">
+    </audio>
+    <!-- koyun sesi için -->
+    <audio id="sheepSound">
+        <source src="musics/sheepvoice.mp3" type="audio/mp3">
+    </audio>
+    <script>
+        // canvas ayarları
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        // müzik şeyleri
+        const arkaPlanMuzik = document.getElementById('backgroundMusic');
+        arkaPlanMuzik.volume = 0.12; // sesi ayarladım
+        // koyun sesi
+        const koyunSesi = document.getElementById('sheepSound');
+        koyunSesi.volume = 0.25; // sesi ayarladım
+        
+        // muzigi başlatma
+        function muzikCal() {
+            arkaPlanMuzik.play().catch(hata => {
+                console.log("müzik çalışmadı ya:", hata);
+            });
+        }
+        
+        // müziği durdurmak için
+        function muzikDurdur() {
+            arkaPlanMuzik.pause();
+        }
+        
+        // koyun sesi çıkarma
+        function koyunSesiCal() {
+            // çalıyosa durdur
+            koyunSesi.pause();
+            koyunSesi.currentTime = 0; // başa al
+            // sesi çal
+            koyunSesi.play().catch(hata => {
+                console.log("koyun sesi çalışmadı:", hata);
+            });
+        }
+        
+        // oyun boyutları
+        const OYUN_GENISLIK = 800;
+        const OYUN_YUKSEKLIK = 600;
+        canvas.width = OYUN_GENISLIK;
+        canvas.height = OYUN_YUKSEKLIK;
+        
+        // sınırlar
+        const SINIR_KALINLIK = 20;
+        const OYUN_ALAN = {
+            x: SINIR_KALINLIK,
+            y: SINIR_KALINLIK,
+            genislik: OYUN_GENISLIK - SINIR_KALINLIK * 2,
+            yukseklik: OYUN_YUKSEKLIK - SINIR_KALINLIK * 2
+        };
+        
+        // renkler
+        const RENKLER = {
+            arkaPlan: '#9bcc45', // çimen rengi
+            sinir: '#ffffff',   // çit beyaz
+            koyun: '#ffffff',   // koyun beyaz
+            insan: '#f5c896',   // insan ten rengi
+            ip: '#8B4513',     // ip kahverengi
+            hedef: '#ffffff',   // hedef işareti
+            skor: '#ffffff',    // skor yazısı
+            kalp: '#ff0000',    // can kalp
+            oyunBitti: '#ff0000' // oyun bitince yazı
+        };
+
+        // oyun durumları
+        const OYUN_DURUM = {
+            BASLANGIÇ: 0,     // başlangıç ekranı
+            NASIL_OYNANIR: 1, // nasıl oynanır kısmı
+            OYUN: 2,         // oyun
+            OYUN_BITTI: 3    // oyun bitince
+        };
+        let simdikiDurum = OYUN_DURUM.BASLANGIÇ;
+        let basZamanlayici = 0;
+        let basOlcek = 1.0;
+        let basOlcekYon = 0.01;
+        
+        // çit çizme
+        function citCiz() {
+            ctx.fillStyle = RENKLER.sinir;
+            // üst çit
+            for (let x = 0; x < OYUN_GENISLIK; x += 10) {
+                ctx.fillRect(x, 0, 8, SINIR_KALINLIK);
+                ctx.fillRect(x + 4, SINIR_KALINLIK - 5, 2, 5);
+            }
+            // alt çit
+            for (let x = 0; x < OYUN_GENISLIK; x += 10) {
+                ctx.fillRect(x, OYUN_YUKSEKLIK - SINIR_KALINLIK, 8, SINIR_KALINLIK);
+                ctx.fillRect(x + 4, OYUN_YUKSEKLIK - SINIR_KALINLIK, 2, 5);
+            }
+            // sol çit
+            for (let y = 0; y < OYUN_YUKSEKLIK; y += 10) {
+                ctx.fillRect(0, y, SINIR_KALINLIK, 8);
+                ctx.fillRect(SINIR_KALINLIK - 5, y + 4, 5, 2);
+            }
+            // sağ çit
+            for (let y = 0; y < OYUN_YUKSEKLIK; y += 10) {
+                ctx.fillRect(OYUN_GENISLIK - SINIR_KALINLIK, y, SINIR_KALINLIK, 8);
+                ctx.fillRect(OYUN_GENISLIK - SINIR_KALINLIK, y + 4, 5, 2);
+            }
+        }
+        
+        // koyun çizimi
+        function koyunCiz(x, y, yaricap) {
+            // koyunun vücudu
+            ctx.fillStyle = RENKLER.koyun;
+            ctx.beginPath();
+            ctx.arc(x, y, yaricap, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // kafası
+            ctx.beginPath();
+            ctx.arc(x + yaricap * 0.7, y - yaricap * 0.3, yaricap * 0.6, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // gözler
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(x + yaricap * 1.0, y - yaricap * 0.4, yaricap * 0.15, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // kulakları
+            ctx.fillStyle = '#eeeeee';
+            ctx.beginPath();
+            ctx.arc(x + yaricap * 0.9, y - yaricap * 0.7, yaricap * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // ayakları
+              ctx.fillStyle = '#dddddd';
+            // ön ayaklar
+            ctx.fillRect(x - yaricap * 0.6, y + yaricap * 0.4, yaricap * 0.4, yaricap * 0.6);
+             ctx.fillRect(x + yaricap * 0.2, y + yaricap * 0.4, yaricap * 0.4, yaricap * 0.6);
+            // arka ayaklar
+            ctx.fillRect(x - yaricap * 0.5, y + yaricap * 0.3, yaricap * 0.4, yaricap * 0.7);
+            ctx.fillRect(x + yaricap * 0.1, y + yaricap * 0.3, yaricap * 0.4, yaricap * 0.7);
+        }
+        
+        // insan çizimi
+        function insanCiz(x, y, yaricap) {
+            // vücut
+            ctx.fillStyle = RENKLER.insan;
+            ctx.beginPath();
+            ctx.arc(x, y, yaricap, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // kafa kısmı
+            ctx.beginPath();
+            ctx.arc(x, y - yaricap * 0.5, yaricap * 0.7, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // göz
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(x - yaricap * 0.2, y - yaricap * 0.6, yaricap * 0.1, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + yaricap * 0.2, y - yaricap * 0.6, yaricap * 0.1, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // ağız
+              ctx.beginPath();
+            ctx.arc(x, y - yaricap * 0.3, yaricap * 0.2, 0, Math.PI);
+            ctx.fill();
+            
+            // saç
+            ctx.fillStyle = '#663300';
+            ctx.beginPath();
+            ctx.arc(x, y - yaricap * 0.8, yaricap * 0.5, Math.PI, Math.PI * 2);
+            ctx.fill();
+            
+            // kollar ve bacaklar
+            ctx.fillStyle = '#3333aa';  // kot rengi
+            // bacaklar
+            ctx.fillRect(x - yaricap * 0.3, y + yaricap * 0.1, yaricap * 0.25, yaricap * 0.9);
+            ctx.fillRect(x + yaricap * 0.05, y + yaricap * 0.1, yaricap * 0.25, yaricap * 0.9);
+            
+            // kollar
+             ctx.fillStyle = RENKLER.insan;
+            ctx.fillRect(x - yaricap * 0.6, y - yaricap * 0.1, yaricap * 0.4, yaricap * 0.3);
+            ctx.fillRect(x + yaricap * 0.2, y - yaricap * 0.1, yaricap * 0.4, yaricap * 0.3);
+        }
+        
+        // oyun değişkenleri
+          let skor = 0;
+        let canlar = 3;
+        let oyunBitti = false;
+          let insanOlusturmaSuresi = 8000; // 8 saniyede bir
+        let sonInsanOlusmasi = 0;
+        let oyunZamani = 0;
+        
+        // bizim koyun (oyuncu)
+        const koyun = {
+            x: OYUN_GENISLIK / 2,
+               y: OYUN_YUKSEKLIK / 2,
+             yaricap: 12,
+            normalHiz: 2.5,       // normal hız
+            hiz: 2.5,            // anlık hız
+            yon: { x: 0, y: 0 },
+            eskiYon: { x: 0, y: 0 }, // önceki hareketi
+            donusHizi: 0,    // dönme hızı
+            sonGecerliKonum: { x: OYUN_GENISLIK / 2, y: OYUN_YUKSEKLIK / 2 } // çarpışma için
+        };
+        
+        // hedef
+        const hedef = {
+            x: OYUN_GENISLIK / 2,
+            y: OYUN_YUKSEKLIK / 2,
+            yaricap: 12
+        };
+        
+        // tüm insanlar
+        const insanlar = [];
+        
+        // ip ayarları
+        let ip = {
+            aktif: false,
+            hedefInsan: null,
+            cekmeFaktor: 0,               // çekme gücü
+            aci: 0,                      // ip açısı
+              karsilikliCekmeHizi: 1.19,   // çekme hızı
+            ipKisalmaOrani: 0.3,        // kısalma hızı
+              minIpUzunlugu: 20,          // en kısa uzunluk
+            carpismaTampon: 5,          // çarpışma için
+               insanCekmeGucu: 0.2,         // insanın koyunu çekmesi
+            normalCekmeMesafesi: 60,     // insanın çekmeye başladığı mesafe
+            takipHizi: 0.02,            // normal takip hızı
+                 maksimumTakipHizi: 0.04,    // en hızlı takip
+            mesafeOlcekFaktoru: 0.2     // mesafeye göre hız
+        };
+        
+        // tuşlar
+        const tuslar = {
+            w: false,
+            a: false,
+            s: false,
+            d: false,
+            r: false
+        };
+        
+        // başlangıç ekranı
+        function baslangicEkraniCiz() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, OYUN_GENISLIK, OYUN_YUKSEKLIK);
+            
+            // buraya erkusstudio yazısı gelcek
+            ctx.fillStyle = '#ffffff';
+               ctx.font = '48px monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // yazıyı yazdıralım
+            const metin = "@erkusstudio";
+            ctx.fillText(metin, OYUN_GENISLIK / 2, OYUN_YUKSEKLIK / 2);
+              
+            // tıklama yazısı
+            ctx.font = '16px Arial';
+               ctx.fillText("", OYUN_GENISLIK / 2, OYUN_YUKSEKLIK / 2 + 80);
+        }
+        
+        // nasıl oynanır ekranı
+        function nasilOynanirEkraniCiz() {
+            // arka plan
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, OYUN_GENISLIK, OYUN_YUKSEKLIK);
+            
+             // başlık
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '40px Arial';
+              ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+             ctx.fillText("Koyun Kovboy Oyunu", OYUN_GENISLIK / 2, 80);
+            
+            // nasıl oynanır
+            ctx.font = '32px Arial';
+            ctx.fillText("Nasıl Oynanır:", OYUN_GENISLIK / 2, 150);
+            
+            // açıklamalar
+            ctx.font = '18px Arial';
+            const aciklamalar = [
+                  "Koyun olarak, çite çarpmadan insanları halat ile tutmanız gerekiyor.",
+                "Fare ile insanları seçip yakalayabilir ve serbest bırakabilirsiniz.",
+                "W A S D tuşları ile koyunu hareket ettirebilirsiniz.",
+                "Belli saniye aralıklarla insanlar oluşur",
+                  "İnsanlar çite çarparsa can kaybedersiniz.",
+                "3 can hakkınız var, hepsini kaybederseniz oyun biter.",
+                "İnsanlar içgüdüsel olarak çitten çıkmaya çalışır,amacınız bunu engellemek",
+                "Ne kadar uzun süre hayatta kalırsanız, o kadar çok puan kazanırsınız."
+            ];
+            
+            let yPozisyon = 200;
+            for(const satir of aciklamalar) {
+                ctx.fillText(satir, OYUN_GENISLIK / 2, yPozisyon);
+                yPozisyon += 30;
+              }
+            
+            // tıklama için
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '24px Arial';
+            ctx.fillText("Oyuna başlamak için herhangi bir yere tıklayın", OYUN_GENISLIK / 2, yPozisyon + 75);
+        }
+        
+        // başla menüsü
+              function baslaMenusuCiz() {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, OYUN_GENISLIK, OYUN_YUKSEKLIK);
+            
+            // başla yazısı
+            ctx.fillStyle = '#ffffff';
+               ctx.font = `${Math.floor(48 * basOlcek)}px monospace`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText("BAŞLA", OYUN_GENISLIK / 2, OYUN_YUKSEKLIK / 2);
+            
+            // büyüyüp küçülme şeyi
+              basOlcek += basOlcekYon;
+            if (basOlcek >= 1.2 || basOlcek <= 0.8) {
+                basOlcekYon = -basOlcekYon;
+            }
+            
+            // hedef çemberi
+            ctx.strokeStyle = RENKLER.hedef;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(OYUN_GENISLIK / 2, OYUN_YUKSEKLIK / 2 + 60, 12, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+        
+        // insan sınıfı
+        class Insan {
+            constructor() {
+                    // ortalarda bi yerde başlat
+                this.x = OYUN_GENISLIK / 2 + (Math.random() * 200 - 100);
+                this.y = OYUN_YUKSEKLIK / 2 + (Math.random() * 200 - 100);
+                this.yaricap = 10;
+                this.temelHiz = 0.7 + Math.random() * 0.3;
+                this.hiz = this.temelHiz;
+                
+                // rastgele bi yön ver
+                this.yon = this.rastgeleYonAl();
+                this.yakalandi = false;
+                this.hizVektoru = { x: 0, y: 0 }; // fizik hesaplamak için
+                   this.mucadele = 0; // yakalanınca çabalama
+                this.mucadeleYonu = { x: 0, y: 0 }; // çabalama yönü
+                this.rastgeleHareketZamanlayici = 0; // rastgele hareket
+                   this.ipUzunlugu = 0; // ip uzunluğu
+                this.baslangicIpUzunlugu = 0; // ilk yakalandığındaki uzunluk
+                this.tehlikeliAlan = false; // tehlikeli bölge algılandı mı
+                this.koyunuCekiyor = false; // koyunu çekiyor mu
+                this.cekmeZamanlayici = 0; // çekme süresi
+                this.sabitPozisyon = {x: this.x, y: this.y}; // titremesini önlemek için
+                   this.sonKoyunPozisyonu = {x: 0, y: 0}; // koyunun en son nerde olduğu
+                this.sonHareketZamani = 0; // en son ne zaman hareket etti
+               }
+            
+            rastgeleYonAl() {
+                // rasgele yön
+                let dx = 0;
+                let dy = 0;
+                
+                // ekranın neresindeyiz
+                if (this.x < OYUN_GENISLIK / 3) {
+                      dx = -1 + Math.random() * 0.5; // genelde sol
+                } else if (this.x > OYUN_GENISLIK * 2/3) {
+                      dx = 0.5 + Math.random() * 0.5; // genelde sağ
+                } else {
+                    dx = Math.random() * 2 - 1; // normal rasgele
+                }
+                
+                if (this.y < OYUN_YUKSEKLIK / 3) {
+                    dy = -1 + Math.random() * 0.5; // genelde yukarı
+                } else if (this.y > OYUN_YUKSEKLIK * 2/3) {
+                    dy = 0.5 + Math.random() * 0.5; // genelde aşağı
+                } else {
+                    dy = Math.random() * 2 - 1; // normal rasgele
+                }
+                
+                // düzeltme
+                const uzunluk = Math.sqrt(dx * dx + dy * dy);
+                return { x: dx / uzunluk, y: dy / uzunluk };
+            }
+            
+            guncelle(deltaTime) {
+                if (this.yakalandi) {
+                    // koyun ile aramızdaki mesafe ve yön
+                    const dx = koyun.x - this.x;
+                    const dy = koyun.y - this.y;
+                    const mesafe = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // ilk yakalandığında hesapla
+                    if (this.baslangicIpUzunlugu === 0) {
+                        this.baslangicIpUzunlugu = mesafe;
+                        this.ipUzunlugu = mesafe;
+                        this.sabitPozisyon = {x: this.x, y: this.y};
+                        this.sonKoyunPozisyonu = {x: koyun.x, y: koyun.y};
+                        this.sonHareketZamani = oyunZamani;
+                    }
+                    
+                    // çekme faktörünü güncelle
+                    ip.cekmeFaktor = Math.min(1.0, mesafe / 200);
+                    
+                    // koyun hareket ediyor mu?
+                    const koyunHareketliMi = (koyun.yon.x !== 0 || koyun.yon.y !== 0);
+                    
+                    // koyun ne kadar hareket etti
+                    const koyunHareketMesafe = Math.sqrt(
+                        (koyun.x - this.sonKoyunPozisyonu.x) * (koyun.x - this.sonKoyunPozisyonu.x) +
+                        (koyun.y - this.sonKoyunPozisyonu.y) * (koyun.y - this.sonKoyunPozisyonu.y)
+                    );
+                    
+                    // koyun pozisyonunu güncelle
+                    this.sonKoyunPozisyonu = {x: koyun.x, y: koyun.y};
+                    
+                    // ip yönünü normalize et
+                    const ipYonX = dx / mesafe;
+                    const ipYonY = dy / mesafe;
+                    
+                    // tehlikeli bölgede miyiz - sınırlara yakın mı
+                    const sinirMesafeX = Math.min(
+                        this.x - OYUN_ALAN.x,
+                        OYUN_ALAN.x + OYUN_ALAN.genislik - this.x
+                    );
+                    const sinirMesafeY = Math.min(
+                        this.y - OYUN_ALAN.y,
+                        OYUN_ALAN.y + OYUN_ALAN.yukseklik - this.y
+                    );
+                    
+                    // tehlikeli bölgedeyse
+                    const tehlikeliMesafe = 50; // 50 pixel tehlikeli
+                    this.tehlikeliAlan = sinirMesafeX < tehlikeliMesafe || sinirMesafeY < tehlikeliMesafe;
+                    
+                    // eğer tehlikeli bölgedeyse uzaklaş
+                    if (this.tehlikeliAlan) {
+                        // güvenli yönü bul
+                        let guvenliYonX = 0;
+                        let guvenliYonY = 0;
+                        
+                        // X yönü için
+                        if (this.x < OYUN_GENISLIK / 2) {
+                            guvenliYonX = 1; // sağa git
+                        } else {
+                            guvenliYonX = -1; // sola git
+                        }
+                        
+                        // Y yönü için
+                        if (this.y < OYUN_YUKSEKLIK / 2) {
+                            guvenliYonY = 1; // aşağı git
+                        } else {
+                            guvenliYonY = -1; // yukarı git
+                        }
+                        
+                        // en yakın olan sınırdan daha hızlı kaç
+                        if (sinirMesafeX < sinirMesafeY) {
+                            guvenliYonX *= 2;
+                        } else {
+                            guvenliYonY *= 2;
+                        }
+                        
+                        // kaçma hareketi
+                        const acilHiz = 2.0 * deltaTime;
+                        this.x += guvenliYonX * acilHiz;
+                        this.y += guvenliYonY * acilHiz;
+                        
+                        // sabit pozisyonu güncelle
+                        this.sabitPozisyon.x = this.x;
+                        this.sabitPozisyon.y = this.y;
+                        this.sonHareketZamani = oyunZamani;
+                    }
+                    else if (koyunHareketliMi) {
+                        // koyun hareket ediyorsa takip et
+                        this.koyunuCekiyor = false;
+                        this.cekmeZamanlayici = 0;
+                        
+                        // mesafeye göre hız ayarla
+                        let dinamikTakipHizi = ip.takipHizi;
+                        
+                        // mesafeye göre hız hesapla
+                        if (mesafe > this.baslangicIpUzunlugu) {
+                            // mesafe arttıkça hız logaritmik artsın
+                            const gerilmeFaktoru = (mesafe - this.baslangicIpUzunlugu) / this.baslangicIpUzunlugu;
+                            const hizArtisi = Math.min(
+                                ip.mesafeOlcekFaktoru * Math.log(1 + gerilmeFaktoru),
+                                ip.maksimumTakipHizi - ip.takipHizi
+                            );
+                            dinamikTakipHizi += hizArtisi;
+                        }
+                        
+                        // en yüksek hızla sınırla
+                        dinamikTakipHizi = Math.min(dinamikTakipHizi, ip.maksimumTakipHizi);
+                        
+                        // sabit mesafede takip et
+                        const takipMesafesi = 60; // takip mesafesi
+                        const hedefX = koyun.x - ipYonX * takipMesafesi;
+                        const hedefY = koyun.y - ipYonY * takipMesafesi;
+                        
+                        // yavaşça hedefe git
+                        this.sabitPozisyon.x += (hedefX - this.sabitPozisyon.x) * dinamikTakipHizi;
+                        this.sabitPozisyon.y += (hedefY - this.sabitPozisyon.y) * dinamikTakipHizi;
+                        
+                        // gerçek pozisyonu ayarla
+                        this.x = this.sabitPozisyon.x;
+                        this.y = this.sabitPozisyon.y;
+                        
+                        // ip uzunluğunu sabit tut
+                        this.ipUzunlugu = this.baslangicIpUzunlugu;
+                    }
+                    else {
+                        // koyun hareketsizse normal çekme yap
+                        this.sonHareketZamani = oyunZamani;
+                        
+                        if (mesafe <= ip.minIpUzunlugu) {
+                            // minumum mesafedeyse çekme yok
+                            this.koyunuCekiyor = false;
+                            this.cekmeZamanlayici = 0;
+                            // sabit pozisyonu güncelle
+                            this.sabitPozisyon.x = this.x;
+                            this.sabitPozisyon.y = this.y;
+                        }
+                        else if (mesafe <= ip.normalCekmeMesafesi) {
+                            // normal mesafedeyse koyunu çekmeye başla
+                            this.cekmeZamanlayici += deltaTime;
+                            if (this.cekmeZamanlayici > 20) {
+                                this.koyunuCekiyor = true;
+                                // koyunu çek
+                                const cekmeGucu = ip.insanCekmeGucu * deltaTime;
+                                // koyunu çekmeden önce kontrol et
+                                const yeniKoyunX = koyun.x - ipYonX * cekmeGucu;
+                                const yeniKoyunY = koyun.y - ipYonY * cekmeGucu;
+                                // koyunun yeni pozisyonunda insan var mı
+                                if (!koyunInsanCarpismasi(yeniKoyunX, yeniKoyunY)) {
+                                    koyun.x = yeniKoyunX;
+                                    koyun.y = yeniKoyunY;
+                                }
+                            }
+                            // sabit pozisyonu güncelle
+                            this.sabitPozisyon.x = this.x;
+                            this.sabitPozisyon.y = this.y;
+                        }
+                        else {
+                            // uzaktaysa birbirlerini çeksinler
+                            this.koyunuCekiyor = false;
+                            this.cekmeZamanlayici = 0;
+                            // ip uzunluğunu yavaşça kısalt
+                            this.ipUzunlugu = Math.max(ip.minIpUzunlugu, this.ipUzunlugu - ip.ipKisalmaOrani * deltaTime);
+                            // mesafeye göre çekme hızı
+                            let karsilikliCekmeHizi = ip.karsilikliCekmeHizi;
+                            // mesafe fazlaysa hızı artır ama limitli
+                            if (mesafe > this.baslangicIpUzunlugu * 2) {
+                                const mesafeFaktoru = mesafe / (this.baslangicIpUzunlugu * 2);
+                                karsilikliCekmeHizi *= Math.min(1 + Math.log(mesafeFaktoru) * 0.2, 1.5);
+                            }
+                            // karşılıklı çekme
+                            const cekmeGucu = karsilikliCekmeHizi * deltaTime;
+                            // insan koyuna doğru hareket etsin
+                            this.sabitPozisyon.x += ipYonX * cekmeGucu;
+                            this.sabitPozisyon.y += ipYonY * cekmeGucu;
+                            // gerçek pozisyonu güncelle
+                            this.x = this.sabitPozisyon.x;
+                            this.y = this.sabitPozisyon.y;
+                            // koyunu çekmeden önce kontrol et
+                            const yeniKoyunX = koyun.x - ipYonX * cekmeGucu;
+                            const yeniKoyunY = koyun.y - ipYonY * cekmeGucu;
+                            // koyunun yeni pozisyonunda insan var mı
+                            if (!koyunInsanCarpismasi(yeniKoyunX, yeniKoyunY)) {
+                                koyun.x = yeniKoyunX;
+                                koyun.y = yeniKoyunY;
+                            }
+                        }
+                    }
+                    
+                    // çarpışma kontrolü - üst üste binmesinler
+                    const minMesafe = koyun.yaricap + this.yaricap + ip.carpismaTampon;
+                    if (mesafe < minMesafe) {
+                        // itme faktörü
+                        const itmeFaktoru = (minMesafe - mesafe) / 2;
+                        // koyun ve insanı birbirinden uzaklaştır
+                        koyun.x += ipYonX * itmeFaktoru;
+                        koyun.y += ipYonY * itmeFaktoru;
+                        // insanın pozisyonunu da güncelle
+                        this.sabitPozisyon.x -= ipYonX * itmeFaktoru;
+                        this.sabitPozisyon.y -= ipYonY * itmeFaktoru;
+                        // gerçek pozisyonu güncelle
+                        this.x = this.sabitPozisyon.x;
+                        this.y = this.sabitPozisyon.y;
+                    }
+                    
+                    // çabalama efekti - koyun hareketsizken ve tehlikede değilken
+                    if (!koyunHareketliMi && !this.tehlikeliAlan) {
+                        this.rastgeleHareketZamanlayici += deltaTime;
+                        if (this.rastgeleHareketZamanlayici > 100 + Math.random() * 100) { // ara sıra çabala
+                            this.rastgeleHareketZamanlayici = 0;
+                            this.mucadele = 0.1 + Math.random() * 0.2; // hafif çabalama
+                            // rastgele yöne çabala
+                            this.mucadeleYonu.x = Math.random() * 2 - 1;
+                            this.mucadeleYonu.y = Math.random() * 2 - 1;
+                            // çabalama yönünü düzelt
+                            const mucadeleUzunluk = Math.sqrt(
+                                this.mucadeleYonu.x * this.mucadeleYonu.x +
+                                this.mucadeleYonu.y * this.mucadeleYonu.y
+                            );
+                            this.mucadeleYonu.x /= mucadeleUzunluk;
+                            this.mucadeleYonu.y /= mucadeleUzunluk;
+                        }
+                        
+                        // çabalama hareketi
+                        if (this.mucadele > 0) {
+                            // pozisyona biraz etki ekle
+                            this.sabitPozisyon.x += this.mucadeleYonu.x * this.mucadele * 0.2 * deltaTime;
+                            this.sabitPozisyon.y += this.mucadeleYonu.y * this.mucadele * 0.2 * deltaTime;
+                            // gerçek pozisyonu güncelle
+                            this.x = this.sabitPozisyon.x;
+                            this.y = this.sabitPozisyon.y;
+                            this.mucadele *= 0.97; // çabuk azalsın
+                        }
+                    } else {
+                        // koyun hareket ediyorsa veya tehlikedeyse çabalamayı sıfırla
+                        this.mucadele = 0;
+                        this.rastgeleHareketZamanlayici = 0;
+                    }
+                } else {
+                    // yakalanmadıysa normal hareket et
+                    this.tehlikeliAlan = false;
+                    this.ipUzunlugu = 0; // ipi sıfırla
+                    this.baslangicIpUzunlugu = 0; // başlangıç uzunluğunu sıfırla
+                    this.koyunuCekiyor = false; // çekmeyi sıfırla
+                    this.cekmeZamanlayici = 0; // zamanlayıcıyı sıfırla
+                    this.sabitPozisyon = {x: this.x, y: this.y}; // sabit pozisyonu güncelle
+                    this.sonKoyunPozisyonu = {x: 0, y: 0}; // koyun pozisyonunu sıfırla
+                    this.sonHareketZamani = 0; // hareket zamanını sıfırla
+                    
+                    // bazen yön değiştir
+                    if (Math.random() < 0.01) {
+                        this.yon = this.rastgeleYonAl();
+                    }
+                    
+                    // hız vektörünü güncelle
+                    this.hizVektoru.x = this.yon.x * this.hiz;
+                    this.hizVektoru.y = this.yon.y * this.hiz;
+                    
+                    // hareket et
+                    this.x += this.hizVektoru.x * deltaTime;
+                    this.y += this.hizVektoru.y * deltaTime;
+                    
+                    // sabit pozisyonu güncelle
+                    this.sabitPozisyon.x = this.x;
+                    this.sabitPozisyon.y = this.y;
+                }
+                
+                // sınırlara çarptı mı kontrol et
+                if (this.x - this.yaricap < OYUN_ALAN.x ||
+                    this.x + this.yaricap > OYUN_ALAN.x + OYUN_ALAN.genislik ||
+                    this.y - this.yaricap < OYUN_ALAN.y ||
+                    this.y + this.yaricap > OYUN_ALAN.y + OYUN_ALAN.yukseklik) {
+                    // çite değdi, can azalt
+                    if (!this.siniraVurdu) {
+                        this.siniraVurdu = true;
+                        canlar--;
+                        // can bittiyse oyun biter
+                        if (canlar <= 0) {
+                            oyunBitti = true;
+                        }
+                        return true; // insanı yok et
+                    }
+                }
+                return false; // insan devam etsin
+            }
+            
+            ciz() {
+                // insanı çiz
+                insanCiz(this.x, this.y, this.yaricap);
+                
+                // yakalanmışsa ve çabalıyorsa göster
+                if (this.yakalandi && this.mucadele > 0.1) {
+                    ctx.strokeStyle = "rgba(255, 0, 0, " + this.mucadele + ")";
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.yaricap + 5, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                
+                // tehlikeli alan görüyorsa göster
+                if (this.yakalandi && this.tehlikeliAlan) {
+                    ctx.strokeStyle = "rgba(255, 255, 0, 0.5)";
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.yaricap + 8, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                
+                // koyunu çekiyorsa göster
+                if (this.yakalandi && this.koyunuCekiyor) {
+                    ctx.strokeStyle = "rgba(255, 165, 0, 0.6)"; // turuncu
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.yaricap + 12, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        // koyun-insan çarpışması kontrolü
+        function koyunInsanCarpismasi(koyunX, koyunY) {
+            const koyunYaricap = koyun.yaricap;
+            // tüm insanları kontrol et
+            for (const insan of insanlar) {
+                const insanYaricap = insan.yaricap;
+                // koyun ve insan arasındaki mesafe
+                const dx = koyunX - insan.x;
+                const dy = koyunY - insan.y;
+                const mesafe = Math.sqrt(dx * dx + dy * dy);
+                // minimum izin verilen mesafe
+                const minMesafe = koyunYaricap + insanYaricap;
+                // çok yakınsa çarpışma var
+                if (mesafe < minMesafe) {
+                    return true; // çarpışma var
+                }
+            }
+            return false; // çarpışma yok
+        }
+        
+        // oyunu başlat
+        function oyunuBaslat() {
+            // başlangıç değerlerini ayarla
+            skor = 0; // skoru sıfırla
+            canlar = 3; // 3 can ver
+            oyunBitti = false;
+            insanlar.length = 0;
+            sonInsanOlusmasi = 0;
+            oyunZamani = 0;
+            
+            // ilk insanı oluştur
+            insanOlustur();
+            
+            // ipi deaktif yap
+            ip.aktif = false;
+            ip.hedefInsan = null;
+            ip.cekmeFaktor = 0;
+            ip.aci = 0;
+            
+            // koyunu ortaya koy
+            koyun.x = OYUN_GENISLIK / 2;
+            koyun.y = OYUN_YUKSEKLIK / 2;
+            koyun.yon = { x: 0, y: 0 };
+            koyun.eskiYon = { x: 0, y: 0 };
+            koyun.hiz = koyun.normalHiz;
+            koyun.donusHizi = 0;
+            koyun.sonGecerliKonum = { x: koyun.x, y: koyun.y };
+            
+            // müziği başlat
+            muzikCal();
+            
+            simdikiDurum = OYUN_DURUM.OYUN;
+        }
+        
+        // oyunu yeniden başlat (kaybedince)
+        function oyunuYenidenBaslat() {
+            // değerleri sıfırla
+            skor = 0; 
+            canlar = 3; 
+            oyunBitti = false;
+            // tüm insanları temizle
+            insanlar.length = 0;
+            // 1 insan ile başla
+            insanOlustur();
+            sonInsanOlusmasi = 0;
+            oyunZamani = 0;
+            
+            // ipi deaktif yap
+            ip.aktif = false;
+            ip.hedefInsan = null;
+            ip.cekmeFaktor = 0;
+            ip.aci = 0;
+            
+            // koyunu ortaya koy
+            koyun.x = OYUN_GENISLIK / 2;
+            koyun.y = OYUN_YUKSEKLIK / 2;
+            koyun.yon = { x: 0, y: 0 };
+            koyun.eskiYon = { x: 0, y: 0 };
+            koyun.hiz = koyun.normalHiz;
+            koyun.donusHizi = 0;
+            koyun.sonGecerliKonum = { x: koyun.x, y: koyun.y };
+            
+            // müzik sesini normale çevir
+            arkaPlanMuzik.volume = 0.3;
+            
+            // hemen oyuna geç
+            simdikiDurum = OYUN_DURUM.OYUN;
+        }
+        
+        // oyunu hazırla
+        function hazirla() {
+            // menü için ayarlar
+            simdikiDurum = OYUN_DURUM.BASLANGIÇ;
+            basZamanlayici = 0;
+            basOlcek = 1.0;
+            basOlcekYon = 0.01;
+            
+            // oyun döngüsünü başlat
+            sonZaman = 0;
+            requestAnimationFrame(oyunDongusu);
+        }
+        
+        // klavye tuşlarını dinle
+        window.addEventListener('keydown', (e) => {
+            // oyun içindeyse
+            if (simdikiDurum === OYUN_DURUM.OYUN) {
+                if (oyunBitti) {
+                    if (e.key.toLowerCase() === 'r') {
+                        oyunuYenidenBaslat(); // yeniden başlat
+                    }
+                    return;
+                }
+                switch(e.key.toLowerCase()) {
+                    case 'w': tuslar.w = true; break;
+                    case 'a': tuslar.a = true; break;
+                    case 's': tuslar.s = true; break;
+                    case 'd': tuslar.d = true; break;
+                    case 'r': tuslar.r = true; break;
+                }
+            }
+        });
+        
+        window.addEventListener('keyup', (e) => {
+            switch(e.key.toLowerCase()) {
+                case 'w': tuslar.w = false; break;
+                case 'a': tuslar.a = false; break;
+                case 's': tuslar.s = false; break;
+                case 'd': tuslar.d = false; break;
+                case 'r': tuslar.r = false; break;
+            }
+        });
+        
+        // fare hareketlerini takip et
+        window.addEventListener('mousemove', (e) => {
+            if (simdikiDurum === OYUN_DURUM.OYUN) {
+                // canvasın yerini bul
+                const rect = canvas.getBoundingClientRect();
+                // fare konumunu canvas içine çevir
+                hedef.x = e.clientX - rect.left;
+                hedef.y = e.clientY - rect.top;
+            }
+        });
+        
+        // fare tıklamasını dinle
+        window.addEventListener('mousedown', (e) => {
+            if (e.button === 0) { // sol tık
+                // başlangıç ekranındaysa, nasıl oynanır ekranına geç
+                if (simdikiDurum === OYUN_DURUM.BASLANGIÇ) {
+                    simdikiDurum = OYUN_DURUM.NASIL_OYNANIR;
+                    return;
+                }
+                
+                // nasıl oynanır ekranındaysa, oyunu başlat
+                if (simdikiDurum === OYUN_DURUM.NASIL_OYNANIR) {
+                    oyunuBaslat();
+                    return;
+                }
+                
+                // başla menüsündeyse, oyunu başlat
+                if (simdikiDurum === OYUN_DURUM.START_MENU) {
+                    oyunuBaslat();
+                    return;
+                }
+                
+                // oyun içindeyse
+                if (simdikiDurum === OYUN_DURUM.OYUN) {
+                    if (oyunBitti) {
+                        oyunuYenidenBaslat(); // yeniden başlat
+                        return;
+                    }
+                    
+                    // zaten bir insan yakalanmışsa ve hedef o insanın yakınındaysa, serbest bırak
+                    if (ip.aktif && ip.hedefInsan) {
+                        const mesafe = Math.sqrt(
+                            Math.pow(hedef.x - ip.hedefInsan.x, 2) +
+                            Math.pow(hedef.y - ip.hedefInsan.y, 2)
+                        );
+                        if (mesafe < ip.hedefInsan.yaricap + hedef.yaricap) {
+                            ip.aktif = false;
+                            ip.hedefInsan.yakalandi = false;
+                            ip.hedefInsan = null;
+                            return;
+                        }
+                    }
+                    
+                    // hedefin yakınındaki insanları ara
+                    const maksYakalamaMesafesi = 15;
+                    let hedefInsan = null;
+                    let hedefMesafe = Infinity;
+                    
+                    for (const insan of insanlar) {
+                        if (!insan.yakalandi) {
+                            const mesafe = Math.sqrt(
+                                Math.pow(hedef.x - insan.x, 2) +
+                                Math.pow(hedef.y - insan.y, 2)
+                            );
+                            if (mesafe < maksYakalamaMesafesi && mesafe < hedefMesafe) {
+                                hedefMesafe = mesafe;
+                                hedefInsan = insan;
+                            }
+                        }
+                    }
+                    
+                    // hedefte insan varsa yakala
+                    if (hedefInsan) {
+                        // diğer insanları serbest bırak
+                        for (const insan of insanlar) {
+                            insan.yakalandi = false;
+                        }
+                        hedefInsan.yakalandi = true;
+                        ip.aktif = true;
+                        ip.hedefInsan = hedefInsan;
+                        // biraz çabalasın
+                        hedefInsan.mucadele = 0.5;
+                        
+                        // koyun sesi çıkar
+                        koyunSesiCal();
+                    }
+                }
+            }
+        });
+        
+        // yeni insan oluştur
+        function insanOlustur() {
+            insanlar.push(new Insan());
+        }
+        
+        // oyun döngüsü
+        let sonZaman = 0;
+        function oyunDongusu(timestamp) {
+            // zaman farkını hesapla
+            const deltaTime = (timestamp - sonZaman) / 16; // 60 FPS için
+            sonZaman = timestamp;
+            
+            // oyun durumuna göre işlem yap
+            if (simdikiDurum === OYUN_DURUM.BASLANGIÇ) {
+                basZamanlayici += deltaTime;
+                baslangicEkraniCiz();
+                // 3 saniye sonra nasıl oynanır ekranına geç
+                if (basZamanlayici > 300) { // 3 saniye
+                    simdikiDurum = OYUN_DURUM.NASIL_OYNANIR;
+                    basZamanlayici = 0;
+                }
+            }
+            else if (simdikiDurum === OYUN_DURUM.NASIL_OYNANIR) {
+                nasilOynanirEkraniCiz();
+            }
+            else if (simdikiDurum === OYUN_DURUM.START_MENU) {
+                baslaMenusuCiz();
+            }
+            else if (simdikiDurum === OYUN_DURUM.OYUN) {
+                oyunZamani += deltaTime;
+                
+                // oyun bittiyse çiz ve çık
+                if (oyunBitti) {
+                    oyunBittiCiz();
+                    // müzik sesini kıs
+                    arkaPlanMuzik.volume = 0.1;
+                    requestAnimationFrame(oyunDongusu);
+                    return;
+                }
+                
+                // son geçerli pozisyonu kaydet
+                koyun.sonGecerliKonum.x = koyun.x;
+                koyun.sonGecerliKonum.y = koyun.y;
+                
+                // oyuncuyu hareket ettir
+                oyuncuHareketiniGuncelle(deltaTime);
+                
+                // insanlarla çarpışma kontrolü
+                if (koyunInsanCarpismasi(koyun.x, koyun.y)) {
+                    // çarpışma varsa, geri al
+                    koyun.x = koyun.sonGecerliKonum.x;
+                    koyun.y = koyun.sonGecerliKonum.y;
+                }
+                
+                // yeni insan oluştur - 8 saniyede bir
+                if (timestamp - sonInsanOlusmasi > insanOlusturmaSuresi) {
+                    insanOlustur();
+                    sonInsanOlusmasi = timestamp;
+                    // süre sabit 8 saniye
+                }
+                
+                // insanları güncelle
+                for (let i = insanlar.length - 1; i >= 0; i--) {
+                    if (insanlar[i].guncelle(deltaTime)) {
+                        // eğer bu insan ipte tutuluyorsa ipi serbest bırak
+                        if (ip.hedefInsan === insanlar[i]) {
+                            ip.aktif = false;
+                            ip.hedefInsan = null;
+                        }
+                        // çite değdiyse yok et
+                        insanlar.splice(i, 1);
+                    }
+                }
+                
+                // skoru artır
+                skor = Math.floor(oyunZamani / 10);
+                
+                // koyun sınırlarda mı
+                koyun.x = Math.max(OYUN_ALAN.x + koyun.yaricap, Math.min(koyun.x, OYUN_ALAN.x + OYUN_ALAN.genislik - koyun.yaricap));
+                koyun.y = Math.max(OYUN_ALAN.y + koyun.yaricap, Math.min(koyun.y, OYUN_ALAN.y + OYUN_ALAN.yukseklik - koyun.yaricap));
+                
+                // koyunun önceki yönünü kaydet
+                koyun.eskiYon.x = koyun.yon.x;
+                koyun.eskiYon.y = koyun.yon.y;
+                
+                // çiz
+                ciz();
+            }
+            
+            // sonraki kare
+            requestAnimationFrame(oyunDongusu);
+        }
+        
+        // oyuncu hareketi
+        function oyuncuHareketiniGuncelle(deltaTime) {
+            // yönü sıfırla
+            koyun.yon.x = 0;
+            koyun.yon.y = 0;
+            
+            // tuşlara göre yön belirle
+            if (tuslar.w) koyun.yon.y = -1;
+            if (tuslar.s) koyun.yon.y = 1;
+            if (tuslar.a) koyun.yon.x = -1;
+            if (tuslar.d) koyun.yon.x = 1;
+            
+            // çapraz gidiyorsa düzelt
+            if (koyun.yon.x !== 0 && koyun.yon.y !== 0) {
+                const uzunluk = Math.sqrt(koyun.yon.x * koyun.yon.x + koyun.yon.y * koyun.yon.y);
+                koyun.yon.x /= uzunluk;
+                koyun.yon.y /= uzunluk;
+            }
+            
+            // koyunu hareket ettirmeden önce hesapla
+            const yeniX = koyun.x + koyun.yon.x * koyun.hiz * deltaTime;
+            const yeniY = koyun.y + koyun.yon.y * koyun.hiz * deltaTime;
+            
+            // yeni pozisyonda çarpışma var mı
+            if (!koyunInsanCarpismasi(yeniX, yeniY)) {
+                // çarpışma yoksa hareket et
+                koyun.x = yeniX;
+                koyun.y = yeniY;
+            }
+            
+            // dönüş hızını güncelle
+            if (koyun.yon.x !== 0) {
+                koyun.donusHizi += koyun.yon.x * 0.001 * deltaTime;
+                koyun.donusHizi = Math.max(-0.05, Math.min(0.05, koyun.donusHizi));
+            } else {
+                koyun.donusHizi *= 0.95; // sürtünme
+            }
+        }
+        
+        // çizim
+        function ciz() {
+            // arka planı temizle
+            ctx.fillStyle = RENKLER.arkaPlan;
+            ctx.fillRect(0, 0, OYUN_GENISLIK, OYUN_YUKSEKLIK);
+            
+            // çitleri çiz
+            citCiz();
+            
+            // insanları çiz
+            for (const insan of insanlar) {
+                insan.ciz();
+            }
+            
+            // koyunu çiz
+            koyunCiz(koyun.x, koyun.y, koyun.yaricap);
+            
+            // ipi çiz
+            if (ip.aktif && ip.hedefInsan) {
+                ctx.strokeStyle = RENKLER.ip;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(koyun.x, koyun.y);
+                ctx.lineTo(ip.hedefInsan.x, ip.hedefInsan.y);
+                ctx.stroke();
+            }
+            
+            // hedefi çiz
+            ctx.strokeStyle = RENKLER.hedef;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(hedef.x, hedef.y, hedef.yaricap, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // skoru çiz
+            ctx.fillStyle = RENKLER.skor;
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`SKOR: ${skor}`, OYUN_ALAN.x + 20, OYUN_ALAN.y + 30);
+            
+            // canları çiz
+            for (let i = 0; i < canlar; i++) {
+                ctx.fillStyle = RENKLER.kalp;
+                ctx.beginPath();
+                const kalpX = OYUN_ALAN.x + OYUN_ALAN.genislik - 40 - i * 40;
+                const kalpY = OYUN_ALAN.y + 30;
+                kalpCiz(kalpX, kalpY, 15);
+                ctx.fill();
+            }
+        }
+        
+        // kalp çizimi
+        function kalpCiz(x, y, boyut) {
+            ctx.beginPath();
+            ctx.moveTo(x, y + boyut / 4);
+            ctx.bezierCurveTo(
+                x, y,
+                x - boyut / 2, y,
+                x - boyut / 2, y + boyut / 4
+            );
+            ctx.bezierCurveTo(
+                x - boyut / 2, y + boyut / 2,
+                x, y + boyut * 3/4,
+                x, y + boyut
+            );
+            ctx.bezierCurveTo(
+                x, y + boyut * 3/4,
+                x + boyut / 2, y + boyut / 2,
+                x + boyut / 2, y + boyut / 4
+            );
+            ctx.bezierCurveTo(
+                x + boyut / 2, y,
+                x, y,
+                x, y + boyut / 4
+            );
+            ctx.fill();
+        }
+        
+        // oyun bitti ekranı
+        function oyunBittiCiz() {
+            // arka plan
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, OYUN_GENISLIK, OYUN_YUKSEKLIK);
+            
+            // oyun bitti yazısı
+            ctx.fillStyle = RENKLER.oyunBitti;
+            ctx.font = '60px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('OYUN BİTTİ', OYUN_GENISLIK / 2, OYUN_YUKSEKLIK / 2 - 30);
+            
+            // skor
+            ctx.fillStyle = RENKLER.skor;
+            ctx.font = '30px Arial';
+            ctx.fillText(`Son Skor: ${skor}`, OYUN_GENISLIK / 2, OYUN_YUKSEKLIK / 2 + 30);
+            
+            // yeniden başlama
+            ctx.font = '20px Arial';
+            ctx.fillText('Yeniden başlamak için R\'ye basın veya tıklayın', OYUN_GENISLIK / 2, OYUN_YUKSEKLIK / 2 + 80);
+            
+            // hedef çemberi
+            ctx.strokeStyle = RENKLER.hedef;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(OYUN_GENISLIK / 2, OYUN_YUKSEKLIK / 2 + 110, 12, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.textAlign = 'left';
+        }
+        
+        // oyunu başlat
+        hazirla();
+    </script>
+</body>
+</html>
